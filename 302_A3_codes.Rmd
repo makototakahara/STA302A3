@@ -1,0 +1,216 @@
+---
+title: "302_A3_model_tests_and_selection"
+author: "Amanda Ng"
+date: "2023-11-22"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+data <- read_csv("cleaned_data.csv")
+library(car)
+library(MASS)
+library(dplyr) 
+```
+
+# Assumption and transformation
+```{r}
+# Original model
+model<- lm(`Daily stress` ~ `Social Network` + `Daily Steps` + `Daily Shouting` + `Sleep` + `Time for Passion` + `Meditation` + `Gender`, data)
+
+summary(model)
+```
+
+```{r}
+# Sleep variance stabalizing transformation
+# Make an appropriate plot of Sleep
+hist(data$Sleep)
+#Left skewed, so we try square
+```
+
+```{r}
+# transform your response
+data$squareSleep <- data$Sleep*data$Sleep
+
+# fit a new model using transformed response
+new_model<- lm(`Daily stress` ~ `Social Network` + `Daily Steps` + `Daily Shouting` + squareSleep + `Time for Passion` + `Meditation` + `Gender`, data)
+```
+
+```{r}
+# Check assumptions and conditions for new model
+
+# Generate all assumption plots for new model
+e_hat <- resid(new_model)
+y_hat <- fitted(new_model)
+# plot residuals vs fitted value plot
+par(mfrow=c(1,2))
+plot(x = y_hat, y = e_hat, xlab="Fitted Values", ylab="Residuals")
+
+# residuals vs predictors
+plot(x = data$`Daily Steps`  , y =  e_hat   , main="Residual vs Social_Network",
+     xlab="Social_Network", ylab="Residual")
+plot(x = data$`Daily Shouting`    , y =  e_hat   , main="Residual vs DAILY_SHOUTING",
+     xlab="DAILY_SHOUTING", ylab="Residual")
+plot(x = data$squareSleep    , y =  e_hat   , main="Residual vs Hours Slept",
+     xlab="Hours Slept", ylab="Residual")
+plot(x = data$`Time for Passion`    , y =  e_hat   , main="Residual vs TIME_FOR_PASSION ",
+     xlab="TIME_FOR_PASSION", ylab="Residual")
+plot(x = data$`Meditation` , y =  e_hat   , main="Residual vs WEEKLY_MEDITATION ",
+     xlab="WEEKLY_MEDITATION", ylab="Residual")
+
+# boxplot of residuals vs Men
+boxplot(e_hat ~ data$Gender, main="Residuals by gender", xlab="Gender", ylab="Residuals",
+        names=c("Men", "Women"))
+
+# QQ-plot
+qqnorm(e_hat)
+qqline(e_hat)
+
+# plot to check additional condition 1
+plot(y_hat, data$`Daily stress`, main="Daily stress vs Fitted", xlab="Fitted", ylab="Daily stress")
+
+# plot to check additional condition 2
+pairwise <- data%>%dplyr::select(`Social Network`, `Daily Steps` , `Daily Shouting`,squareSleep,`Time for Passion`,`Meditation`,`Gender`)
+
+pairs(pairwise[,])
+```
+
+
+# Tests
+
+```{r}
+# F test
+summary(new_model)
+```
+
+Since p-value is small (< 0.05 alpha level), we would reject the null hypothesis and conclude that a significant linear relationship exists between the response and at least one of the predictors.
+
+Based on the summary from the model, we decide to eliminates any predictors that aren’t significantly linearly related to the response (i.e. social network and daily steps) (p-value large)
+
+```{r}
+# Reduced model
+reduced_model<- lm(`Daily stress` ~ `Daily Shouting` + squareSleep + `Time for Passion` + `Meditation` + `Gender`, data)
+```
+
+```{r}
+# Check assumptions and conditions for reduced model
+
+# Generate all assumption plots for reduced model
+e_hat <- resid(reduced_model)
+y_hat <- fitted(reduced_model)
+# plot residuals vs fitted value plot
+par(mfrow=c(1,2))
+plot(x = y_hat, y = e_hat, xlab="Fitted Values", ylab="Residuals")
+
+# residuals vs predictors
+plot(x = data$`Daily Steps`  , y =  e_hat   , main="Residual vs Social_Network",
+     xlab="Social_Network", ylab="Residual")
+plot(x = data$`Daily Shouting`    , y =  e_hat   , main="Residual vs DAILY_SHOUTING",
+     xlab="DAILY_SHOUTING", ylab="Residual")
+plot(x = data$squareSleep    , y =  e_hat   , main="Residual vs Hours Slept",
+     xlab="Hours Slept", ylab="Residual")
+plot(x = data$`Time for Passion`    , y =  e_hat   , main="Residual vs TIME_FOR_PASSION ",
+     xlab="TIME_FOR_PASSION", ylab="Residual")
+plot(x = data$`Meditation` , y =  e_hat   , main="Residual vs WEEKLY_MEDITATION ",
+     xlab="WEEKLY_MEDITATION", ylab="Residual")
+
+# boxplot of residuals vs Men
+boxplot(e_hat ~ data$Gender, main="Residuals by gender", xlab="Gender", ylab="Residuals",
+        names=c("Men", "Women"))
+
+# QQ-plot
+qqnorm(e_hat)
+qqline(e_hat)
+
+# plot to check additional condition 1
+plot(y_hat, data$`Daily stress`, main="Daily stress vs Fitted", xlab="Fitted", ylab="Daily stress")
+
+# plot to check additional condition 2
+pairwise2 <- data%>%dplyr::select(`Daily Shouting`,squareSleep,`Time for Passion`,`Meditation`,`Gender`)
+
+pairs(pairwise2[,])
+```
+
+```{r}
+# Conduct a partial F test
+anova(reduced_model, new_model)
+```
+
+We fail to reject the null hypothesis and conclude that the predictors we removed from the full model were
+all not significantly linearly related to the response.
+
+
+# Multicollinearity
+```{r}
+# find the VIF values of all predictors in the model
+vif(reduced_model)
+```
+All well below 5, no multicollinearity problem.
+
+# Problematic points
+```{r}
+# useful values:
+n <- nrow(data)
+p <- length(coef(reduced_model))-1
+# leverage cutoff
+h_cut <- 2*(p+1)/n
+# cooks cutoff
+D_cut <- qf(0.5, p+1, n-p-1)
+# DFFITS cutoff
+fits_cut <- 2*sqrt((p+1)/n)
+# DFBETAS cutoff
+beta_cut <- 2/sqrt(n)
+
+
+# leverage
+h_ii <- hatvalues(reduced_model)
+# outlier
+r_i <- rstandard(reduced_model)
+# Cook's Distance
+D_i <- cooks.distance(reduced_model)
+# DFFITS
+dffits_i <- dffits(reduced_model)
+# DFBETAS
+dfbetas_i <- dfbetas(reduced_model)
+```
+
+```{r}
+# identify leverage points
+which(h_ii > h_cut)
+```
+
+```{r}
+# identify outliers
+which(r_i > 4 | r_i < -4)
+```
+No outliers
+
+
+```{r}
+# influential on all fitted values
+which(D_i > D_cut)
+```
+No influential poiunts on all fitted values
+
+
+```{r}
+# influential on own fitted value
+which(abs(dffits_i) > fits_cut)
+```
+
+```{r}
+# influential on a coefficient
+for(i in 1:6){
+print(paste0("Beta ", i-1))
+print(which(abs(dfbetas_i) > beta_cut)) # add your criteria here - this checks all betas in a loop
+}
+```
+
+# Model selection
+```{r}
+stepAIC(lm(`Daily stress` ~ `Daily Shouting` + squareSleep + `Time for Passion` + `Meditation` + `Gender`, data),
+        direction = "both", k = 2)
+```
+The full model is the best model.
+Full model = sleep transformed and 2 predictors removed from partial F test.
